@@ -1,0 +1,268 @@
+---
+title: "Untitled"
+author: "Adriana"
+date: '2021-20-11'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r setup, message=FALSE}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+options(width=100)
+```
+
+---
+
+# Section 1
+
+## Reading & inspecting the data
+```{r, results='hide'}
+health.data<-read_delim("adult_diet_data.txt", col_names = TRUE)
+```
+### Data Dictionary
+
+Variable       | Description
+-------------- | ---------------------------------------------------------
+height         | Height of the individual in cm
+start_weight   | Weight of the individual at the start of the diet period in kg
+end_weight     | Weight of the individual at the end of the diet period in kg
+age            | Age of the individual
+sex            | Biological sex of the individual (M/F)
+impulsivity    | The individual's score on an impulsivity test
+diet_cond      | The dietary conditions of the individual according to the experiment: regular (following their own regular dietary conditions) or no_chocolate (following the new dietary conditions of excluding all chocolate from the diet)
+iq             | The IQ of the individual
+
+
+Let's investigate the data
+
+```{r, results='hide'}
+str(health.data)
+#There are two categorical variables that we would like to save as factors: sex and diet_cond. Let's do that.
+health.data$sex <- as.factor(health.data$sex)
+health.data$diet_cond <- as.factor(health.data$diet_cond)
+```
+
+Let's check the summary statistics of this dataset.
+
+```{r}
+summary(health.data)
+```
+
+The data seems to be well balanced in terms of diet condition.
+There seems to be at least an outlier when looking at the height of individuals - we should take a closer look. Other than that the data doesn't seem to have outliers.
+Let's plot the distribution of the health variable to have a closer look.
+
+```{r}
+ggplot(health.data) + geom_histogram(aes(x=height), binwidth = 5) + labs(title = "Distribution of height", x="Height (in cm)", y="Frequency")
+```
+
+Indeed, this plot shows us that there are outliers in out data with respect to the height variable, specifically there is a very high value of the height variable for at least one data point. Let's see what these outliers look like to get an idea of what they may mean. 
+
+```{r}
+arrange(health.data, desc(height))
+``` 
+
+This shows us our interpretation of the outlier is correct: there is a data point for which the height value is 1636.30	cm, which is far above all the other values and quite impossible when considering the nature of our data:since the tallest person in the world is under 3m it is impossible that this person in our dataset is in fact 16m tall. We can therefore assume that this outlier is not an accurate representation of the data and was inputed due to a mistake. Considering the other values of this observation this seems to be a valid data point: a 31-year-old female weighing 61 kg on a no chocolate diet. 
+
+This outlier could be harming our analisis later on so we would like to find a way to deal with it. Since the value is 1636.30, we are inclined to believe the mistake may be due to a misplaced comma - the real value would be 163.63 cm, which is a plausible value. Either way, replacing this value with a more realistic value does not hurt our data set or our analysis in this case, and it helps us keep the rest of the information from this datapoint. 
+
+Let us then change the height value for this observation to 163.63 cm.
+
+```{r}
+health.data$height[health.data$height==1636.30] <- 163.63
+```
+
+We are interested in investigating individuals' BMI at the start and end of the diet period, as well as their weight loss along the way. Let's add three variables to our dataset that represent that.
+The formula used to calculate the BMI is the following: 
+                 BMI=weight/height^2
+  where weight is measured in kg and height^2 is measured in m^2
+
+
+```{r}
+#Let's first add start_BMI by using the individuals' start_weight and height. 
+health.data<-mutate(health.data, 
+                    start_BMI=health.data$start_weight*10000/health.data$height^2,
+                    end_BMI=health.data$end_weight*10000/health.data$height^2,
+                    weight_loss=health.data$start_weight-health.data$end_weight
+                    )
+#Note that the 10000 in the BMI formulas are meant to account for the unit measure transformation (fron cm to m)
+#It is interesting to see that there are some individuals that have actually gained weight by the end of their diet plan: some weight loss values are actually negative.
+```
+
+Now that we have analysed the integrity of the data and prepared it for our analysis we can move to constructing more meaningful plots and statistical measures.
+
+## Q1. Construct a plot showing the relationship between impulsivity and age
+```{r}
+ggplot(health.data, aes(x = impulsivity, y = age, shape = sex, color = sex)) + geom_point() + geom_smooth(se=FALSE) + labs(title = "The relationship between impulsivity and age, according to sex", x = "Impulsivity score", y = "Age" )
+
+#method='loess' is the default
+```
+
+## Q2. Conduct summary statistics for BMI at the start and end of the trial as well as for weight loss
+```{r}
+#Let's have a look at the summary statistics for each of these categories.
+summary(health.data$start_BMI)
+summary(health.data$end_BMI)
+summary(health.data$weight_loss)
+
+
+#Since these statictics don't give us much information about the performance of different diet plans we want to take a closer look at the statistics for each individual category.
+#Let's have a look at the mean and standard deviation values for these three categories according to the diet plan of the individuals.
+health.data %>%
+  group_by(diet_cond) %>%
+  summarise_at(vars(start_BMI, end_BMI, weight_loss), funs(mean,sd))
+
+#Let's now have a look at the same measures, but according to the sex of the individuals,
+health.data %>%
+  group_by(sex) %>%
+  summarise_at(vars(start_BMI, end_BMI, weight_loss), funs(mean,sd))
+
+#Finally let's have a look at the mean and standard deviations for each of the four subcategories: females who followed a regular diet plan, females who ate no chocolate, males who followed a regular diet plan and males who ate no chocolate.
+
+F.health.data <- filter(health.data, sex == 'F') #save the dataset of female individuals
+M.health.data <- filter(health.data, sex == 'M') #save the dataset of male individuals
+
+#From the dataset of female individuals, let's have a look at the statistics for each separate diet plan.
+F.health.data %>%
+  group_by(diet_cond) %>%
+  summarise_at(vars(start_BMI,end_BMI,weight_loss), funs(mean,sd))
+
+#Let's do the same for males.
+M.health.data %>%
+  group_by(diet_cond) %>%
+  summarise_at(vars(start_BMI,end_BMI,weight_loss), funs(mean,sd))
+```
+
+## Q3. Visualising of the distribution of post-diet BMI
+
+Let's create a plot that can show the overall distribution of BMIs at the end of the trial, that allows us to compare the distributions between the sexes in each of the diet conditions. 
+```{r}
+ggplot(health.data, color='magenta') %>%
+  + geom_histogram(aes(x=end_BMI), binwidth = 0.5) %>%
+  + facet_wrap(~ diet_cond + sex) %>%
+  + geom_vline(aes(xintercept = mean(end_BMI)), linetype = "dashed", show.legend = TRUE) %>%
+  + geom_vline(data=filter(health.data, sex=='F' & diet_cond=='regular'), aes(xintercept=26.32194), color='pink') %>%
+  + geom_text(data=filter(health.data, sex=='F' & diet_cond=='regular'), aes(x=26.32194, label = 'Category_mean', y=5), angle=90, vjust=1, color='pink') %>%
+  + geom_vline(data=filter(health.data, sex=='F' & diet_cond=='no_chocolate'), aes(xintercept=24.19184), color='deeppink') %>%
+  + geom_text(data=filter(health.data, sex=='F' & diet_cond=='no_chocolate'), aes(x=24.19184, label = 'Category_mean', y=5), angle=90, vjust=1, color='deeppink') %>%
+  + geom_vline(data=filter(health.data, sex=='M' & diet_cond=='regular'), aes(xintercept=22.78391), color='deepskyblue') %>%
+  + geom_text(data=filter(health.data, sex=='M' & diet_cond=='regular'), aes(x=22.78391, label = 'Category_mean', y=5), angle=90, vjust=-1, color='deepskyblue') %>%
+  + geom_vline(data=filter(health.data, sex=='M' & diet_cond=='no_chocolate'), aes(xintercept=21.87281), color='blue') %>%
+  + geom_text(data=filter(health.data, sex=='M' & diet_cond=='no_chocolate'), aes(x=21.87281, label = 'Category_mean', y=5), angle=90, vjust=-1, color='blue') %>%
+  + labs(title = "Distribution of post-diet BMI according to diet conditions and sex", x = "BMI", y = "Frequency")
+mean(health.data$end_BMI)
+
+#This plot shows the distribution of BMIs at the end of the diet period for each of the sexes, within each of the two diets, while also showing the overall average BMI at the end of the period and the average BMI of each of these sub-categories. 
+
+```
+
+## Q4. Conducting t-tests comparing diet plans
+
+Let's conduct a two-sample t-test to see whether the two diet plans give similar results or not. Our t-test will measure how likely it is that the two groups (those following a regular diet and those following a no-chocolate diet) have the same average weight loss at the end of the period. 
+We hypothesize that the means of the two groups are the same: H0: mu1=mu2
+
+```{r}
+t.test(weight_loss~diet_cond, data=health.data)
+```
+Therefore, the results of our t-test are the following:
+  t = 7.0626, df = 277.73, p-value = 1.314e-11
+That means our p-value is very small, consequently p-value<0.05. That means that we reject the null hypothesis (H0), concluding that there is a statistically significant difference between the two group means.
+---
+
+# Section 2
+
+The analysis conducted in this report is based on customer data made up of 400 individuals, half of which have maintained their regular diet plan, while the other half has adopted the new diet plan which involved completely excluding the consumption of chocolate. This report presents a few key insights into the data as requested by the company, as well as the success of adopting this new diet plan as opposed to maintaining the regular one in terms of customer's health, which is measured in terms of weight loss and BMI. 
+
+Following the suggestion that there may be a non-linear relationship between impulsivity and age I have compiled the following plot: 
+```{r, echo=FALSE, message=FALSE}
+ggplot(health.data, aes(x = impulsivity, y = age, shape = sex, color = sex)) + geom_point() + geom_smooth(se=FALSE) + labs(title = "The relationship between impulsivity and age, according to sex", x = "Impulsivity score", y = "Age" )
+```
+This plot shows that there is no significant relationship between the age of an individual and their impulsivity: impulsivity neither diminishes, nor increases as the individual gets older. This is the case for both males and females. We can see this by observing the general distribution of the data points: there is no clear direction for either category, but also by having a look at the lines plotting the relationship between the two attributes: since these lines are rather horizontal and don't follow a specific direction (they are not straight lines), there is no significant relationship between age and impulsivity, for either males or females, let alone a linear relationship. 
+
+
+Let us now have a look at the summary statistics for several health variables.
+
+The following table shows the mean and standard deviation for the BMI at the start of the period for each males and females, separately for each diet regime:
+
+Females | No chocolate diet      | Regular diet
+------- | -----------------------|-----------------
+Mean    |   25.56881	           | 26.11805	
+Std.Dev.|   3.807012	           | 4.086993	
+
+
+Males   | No chocolate diet      | Regular diet
+------- | -----------------------|-----------------
+Mean    |   22.76704		         | 22.68712		
+Std.Dev.|   3.573152	           | 4.282885	
+
+
+The next table shows the same values for the BMI at the end of the period: 
+
+Females | No chocolate diet      | Regular diet
+------- | -----------------------|-----------------
+Mean    |   24.19184		         | 26.32194		
+Std.Dev.|   3.835307	           | 4.325648	
+
+
+Males   | No chocolate diet      | Regular diet
+------- | -----------------------|-----------------
+Mean    |   21.87281	           | 22.78391	
+Std.Dev.|   4.145608	           | 4.661377	
+
+
+
+Finally, this table shows the same statistics for the weight loss measure: 
+
+Females | No chocolate diet      | Regular diet
+------- | -----------------------|-----------------
+Mean    |   3.5270270	           | -0.5634921	
+Std.Dev.|   4.837703	           | 4.419042	
+
+
+Males   | No chocolate diet      | Regular diet
+------- | -----------------------|-----------------
+Mean    |   2.7837838		         | -0.2063492		
+Std.Dev.|   5.268855	           | 4.495896	
+
+We can conclude from these statistics that the mean weight loss seems to be larger for those following the no-chocolate diet for both males and females, annd we can even observe that the mean weight loss for those following a regular diet is negative, indicating these individuals actually gained weight. Similarly, from the MBI statistics we can see that both males and females following a no-chocolate diet have a lower average BMI than their counterparts, and that the average BMI at the end of the period is smaller for both males and females following a no-chocolate diet, whereas for those on a regular diet there isn't much of a change in their end BMI. These results might suggest that the no-chocolate diet is effective in producing positive health outcomes in terms of lowering their weight and, consequently leading to lower BMI. However, these are aggregate measures and further investigations need to be conducted to see whether this approach is generally helpful: have some individuals lost massive amounts of weight while others have gained weight - for example in the case of damaging binge eating of other harmful products other than chocolate; this may produce similar results with those observed but the underlying diet plan could in reality be worse than the regular one. 
+
+To have a closer look into these matters we can investigate the distribution of the BMI os the individuals for the end of the diet period.
+
+The following figure shows the the overall distribution of BMIs at the end of the trial, separately for each of the sexes and in each of the diet conditions, allowing us to investigate the conditions of obtaining these statistics.
+
+```{r, echo=FALSE}
+ggplot(health.data, color='magenta') %>%
+  + geom_histogram(aes(x=end_BMI), binwidth = 0.5) %>%
+  + facet_wrap(~ diet_cond + sex) %>%
+  + geom_vline(aes(xintercept = mean(end_BMI)), linetype = "dashed", show.legend = TRUE) %>%
+  + geom_vline(data=filter(health.data, sex=='F' & diet_cond=='regular'), aes(xintercept=26.32194), color='pink') %>%
+  + geom_text(data=filter(health.data, sex=='F' & diet_cond=='regular'), aes(x=26.32194, label = 'Category_mean', y=5), angle=90, vjust=1, color='pink') %>%
+  + geom_vline(data=filter(health.data, sex=='F' & diet_cond=='no_chocolate'), aes(xintercept=24.19184), color='deeppink') %>%
+  + geom_text(data=filter(health.data, sex=='F' & diet_cond=='no_chocolate'), aes(x=24.19184, label = 'Category_mean', y=5), angle=90, vjust=1, color='deeppink') %>%
+  + geom_vline(data=filter(health.data, sex=='M' & diet_cond=='regular'), aes(xintercept=22.78391), color='deepskyblue') %>%
+  + geom_text(data=filter(health.data, sex=='M' & diet_cond=='regular'), aes(x=22.78391, label = 'Category_mean', y=5), angle=90, vjust=-1, color='deepskyblue') %>%
+  + geom_vline(data=filter(health.data, sex=='M' & diet_cond=='no_chocolate'), aes(xintercept=21.87281), color='blue') %>%
+  + geom_text(data=filter(health.data, sex=='M' & diet_cond=='no_chocolate'), aes(x=21.87281, label = 'Category_mean', y=5), angle=90, vjust=-1, color='blue') %>%
+  + labs(title = "Distribution of post-diet BMI according to diet conditions and sex", x = "BMI", y = "Frequency")
+mean(health.data$end_BMI)
+
+#This plot shows the distribution of BMIs at the end of the diet period for each of the sexes, within each of the two diets, while also showing the overall average BMI at the end of the period and the average BMI of each of these sub-categories. 
+
+```
+These distributions seem to be fairly normal, in broad terms, but enough for us to conclude that the positive results do not come from unexpected irregulaties within the diet behaviour of individuals. As mentioned, the average BMI is lower for those following the no-chocolate diet than for those on a regular diet for both males and females. More than that, the distributions are slightly shifted to the left for those on the experimental diet: there are overall less males with generally high BMIs in the no-chocolate diet, and virtually no females with high BMIs in that same category. This is further indication that the diet strategy works in diminishing the BMI of individuals regardless of their sex. 
+
+Finally, I have conducted a two-sample t-test in order to test for the difference of the average weight loss between the two diet groups. I have hypothesized that the means of the two groups are the same: the t-test will measure how likely it is that the two groups (those following a regular diet and those following a no-chocolate diet) have the same average weight loss at the end of the period.
+
+The results obtained were the following:  t = 7.0626, df = 277.73, p-value = 1.314e-11.
+That means that the p-value is very small, certainly less than 0.05. We therefore reject the null hypothesis (H0), concluding that there is a statistically significant difference between the two group means. This further strenghtens the previous conclusion that the no-chocolate plan is successful in reducing clients' BMI.
+
+Considering all the data analysis conducted and metioned above this report concludes that there are high chances that following a diet that completely excludes chocolate consumption leads to weight loss and lower BMIs, and subsequently to better health outcomes.
+
+---
